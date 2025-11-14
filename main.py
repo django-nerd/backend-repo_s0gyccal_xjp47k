@@ -1,8 +1,14 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from bson import ObjectId
+from typing import List, Optional
 
-app = FastAPI()
+from database import db, create_document, get_documents
+from schemas import Homestay, Package, Booking
+
+app = FastAPI(title="Ulin API", description="API for Ulin - Homestay & Tour Packages")
 
 app.add_middleware(
     CORSMiddleware,
@@ -14,56 +20,64 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"message": "Hello from FastAPI Backend!"}
-
-@app.get("/api/hello")
-def hello():
-    return {"message": "Hello from the backend API!"}
+    return {"message": "Ulin Backend Ready"}
 
 @app.get("/test")
 def test_database():
-    """Test endpoint to check if database is available and accessible"""
     response = {
         "backend": "✅ Running",
         "database": "❌ Not Available",
-        "database_url": None,
-        "database_name": None,
-        "connection_status": "Not Connected",
-        "collections": []
     }
-    
     try:
-        # Try to import database module
-        from database import db
-        
         if db is not None:
-            response["database"] = "✅ Available"
-            response["database_url"] = "✅ Configured"
-            response["database_name"] = db.name if hasattr(db, 'name') else "✅ Connected"
-            response["connection_status"] = "Connected"
-            
-            # Try to list collections to verify connectivity
-            try:
-                collections = db.list_collection_names()
-                response["collections"] = collections[:10]  # Show first 10 collections
-                response["database"] = "✅ Connected & Working"
-            except Exception as e:
-                response["database"] = f"⚠️  Connected but Error: {str(e)[:50]}"
+            response["database"] = "✅ Connected"
+            response["collections"] = db.list_collection_names()
         else:
-            response["database"] = "⚠️  Available but not initialized"
-            
-    except ImportError:
-        response["database"] = "❌ Database module not found (run enable-database first)"
+            response["database"] = "❌ Not Configured"
     except Exception as e:
-        response["database"] = f"❌ Error: {str(e)[:50]}"
-    
-    # Check environment variables
-    import os
-    response["database_url"] = "✅ Set" if os.getenv("DATABASE_URL") else "❌ Not Set"
-    response["database_name"] = "✅ Set" if os.getenv("DATABASE_NAME") else "❌ Not Set"
-    
+        response["database"] = f"⚠️ Error: {str(e)[:80]}"
     return response
 
+# ---------------------- Homestays ----------------------
+@app.get("/homestays")
+def list_homestays():
+    items = get_documents("homestay")
+    for it in items:
+        it["id"] = str(it.pop("_id"))
+    return items
+
+@app.post("/homestays", status_code=201)
+def create_homestay(payload: Homestay):
+    try:
+        _id = create_document("homestay", payload)
+        return {"id": _id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ---------------------- Packages ----------------------
+@app.get("/packages")
+def list_packages():
+    items = get_documents("package")
+    for it in items:
+        it["id"] = str(it.pop("_id"))
+    return items
+
+@app.post("/packages", status_code=201)
+def create_package(payload: Package):
+    try:
+        _id = create_document("package", payload)
+        return {"id": _id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ---------------------- Bookings ----------------------
+@app.post("/bookings", status_code=201)
+def create_booking(payload: Booking):
+    try:
+        _id = create_document("booking", payload)
+        return {"id": _id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
